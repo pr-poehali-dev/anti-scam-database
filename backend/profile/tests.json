@@ -1,0 +1,22 @@
+{
+  "tests": [
+    {
+      "name": "Get user profile",
+      "method": "GET",
+      "path": "/?user_id=1",
+      "expectedStatus": 200,
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Update avatar",
+      "method": "PUT",
+      "path": "/",
+      "body": {
+        "user_id": 1,
+        "avatar_url": "https://example.com/avatar.jpg"
+      },
+      "expectedStatus": 200,
+      "bodyMatcher": "partial"
+    }
+  ]
+}

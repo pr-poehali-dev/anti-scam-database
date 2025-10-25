@@ -1,0 +1,22 @@
+{
+  "tests": [
+    {
+      "name": "Get friends list",
+      "method": "GET",
+      "path": "/?user_id=1",
+      "expectedStatus": 200,
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Add friend",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "user_id": 1,
+        "friend_user_id": "#1001"
+      },
+      "expectedStatus": 200,
+      "bodyMatcher": "partial"
+    }
+  ]
+}

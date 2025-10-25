@@ -12,6 +12,16 @@ interface User {
   user_id: string;
   email: string;
   is_creator: boolean;
+  avatar_url?: string;
+}
+
+interface Friend {
+  id: number;
+  user_id: string;
+  email: string;
+  is_creator: boolean;
+  avatar_url?: string;
+  status: string;
 }
 
 interface SearchResult {
@@ -30,6 +40,10 @@ const Index = () => {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [activeTab, setActiveTab] = useState<'search' | 'profile' | 'friends'>('search');
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [friendUserId, setFriendUserId] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
   const { toast } = useToast();
 
   useEffect(() => {
@@ -110,6 +124,102 @@ const Index = () => {
       description: 'До скорой встречи!'
     });
   };
+
+  const loadFriends = async () => {
+    if (!currentUser) return;
+    try {
+      const response = await fetch(
+        `https://functions.poehali.dev/2f80e002-f06f-423f-a633-a2c26f5c4cf8?user_id=${currentUser.id}`
+      );
+      const data = await response.json();
+      setFriends(data.friends || []);
+    } catch (error) {
+      console.error('Failed to load friends');
+    }
+  };
+
+  const handleAddFriend = async () => {
+    if (!currentUser || !friendUserId.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'Ошибка',
+        description: 'Введите ID пользователя'
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch('https://functions.poehali.dev/2f80e002-f06f-423f-a633-a2c26f5c4cf8', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: currentUser.id, friend_user_id: friendUserId })
+      });
+
+      if (response.ok) {
+        toast({
+          title: 'Успешно!',
+          description: 'Друг добавлен'
+        });
+        setFriendUserId('');
+        loadFriends();
+      } else {
+        const data = await response.json();
+        toast({
+          variant: 'destructive',
+          title: 'Ошибка',
+          description: data.error || 'Не удалось добавить друга'
+        });
+      }
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Ошибка',
+        description: 'Не удалось подключиться к серверу'
+      });
+    }
+  };
+
+  const handleUpdateAvatar = async () => {
+    if (!currentUser || !avatarUrl.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'Ошибка',
+        description: 'Введите URL аватара'
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch('https://functions.poehali.dev/1de1e77d-129c-4a35-83e8-5e53edd71c52', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: currentUser.id, avatar_url: avatarUrl })
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        setCurrentUser(data);
+        localStorage.setItem('scamkadr_user', JSON.stringify(data));
+        toast({
+          title: 'Успешно!',
+          description: 'Аватар обновлен'
+        });
+        setAvatarUrl('');
+      }
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Ошибка',
+        description: 'Не удалось обновить аватар'
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (currentUser && activeTab === 'friends') {
+      loadFriends();
+    }
+  }, [activeTab, currentUser]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-secondary via-secondary/95 to-secondary/90">
@@ -215,38 +325,55 @@ const Index = () => {
           </div>
         ) : (
           <div className="space-y-8">
-            <Card className="border-primary/20 shadow-xl">
-              <CardHeader>
-                <CardTitle className="text-xl flex items-center gap-2">
-                  <Icon name="Search" size={24} />
-                  Поиск пользователя
-                </CardTitle>
-                <CardDescription>
-                  Введите username пользователя Telegram для проверки
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex gap-3">
-                  <Input
-                    placeholder="@username"
-                    value={searchUsername}
-                    onChange={(e) => setSearchUsername(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                    className="text-lg"
-                  />
-                  <Button onClick={handleSearch} disabled={isSearching} size="lg">
-                    {isSearching ? (
-                      <Icon name="Loader2" size={20} className="animate-spin" />
-                    ) : (
-                      <>
-                        <Icon name="Search" size={20} className="mr-2" />
-                        Проверить
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'search' | 'profile' | 'friends')} className="w-full">
+              <TabsList className="grid w-full grid-cols-3 mb-8">
+                <TabsTrigger value="search" className="flex items-center gap-2">
+                  <Icon name="Search" size={18} />
+                  Поиск
+                </TabsTrigger>
+                <TabsTrigger value="profile" className="flex items-center gap-2">
+                  <Icon name="User" size={18} />
+                  Мой профиль
+                </TabsTrigger>
+                <TabsTrigger value="friends" className="flex items-center gap-2">
+                  <Icon name="Users" size={18} />
+                  Друзья
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="search" className="space-y-8">
+                <Card className="border-primary/20 shadow-xl">
+                  <CardHeader>
+                    <CardTitle className="text-xl flex items-center gap-2">
+                      <Icon name="Search" size={24} />
+                      Поиск пользователя
+                    </CardTitle>
+                    <CardDescription>
+                      Введите username пользователя Telegram для проверки
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex gap-3">
+                      <Input
+                        placeholder="@username"
+                        value={searchUsername}
+                        onChange={(e) => setSearchUsername(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                        className="text-lg"
+                      />
+                      <Button onClick={handleSearch} disabled={isSearching} size="lg">
+                        {isSearching ? (
+                          <Icon name="Loader2" size={20} className="animate-spin" />
+                        ) : (
+                          <>
+                            <Icon name="Search" size={20} className="mr-2" />
+                            Проверить
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
 
             {searchResults.length > 0 && (
               <div className="space-y-4">
@@ -288,19 +415,145 @@ const Index = () => {
               </div>
             )}
 
-            {searchUsername && searchResults.length === 0 && !isSearching && (
-              <Card className="border-primary/20">
-                <CardContent className="p-8 text-center">
-                  <Icon name="Users" size={48} className="mx-auto mb-4 text-muted-foreground" />
-                  <p className="text-lg text-muted-foreground">
-                    Пользователь не найден в базе данных
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Это хороший знак — нет негативных отчетов
-                  </p>
-                </CardContent>
-              </Card>
-            )}
+                {searchUsername && searchResults.length === 0 && !isSearching && (
+                  <Card className="border-primary/20">
+                    <CardContent className="p-8 text-center">
+                      <Icon name="Users" size={48} className="mx-auto mb-4 text-muted-foreground" />
+                      <p className="text-lg text-muted-foreground">
+                        Пользователь не найден в базе данных
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-2">
+                        Это хороший знак — нет негативных отчетов
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
+
+              <TabsContent value="profile" className="space-y-6">
+                <Card className="border-primary/20 shadow-xl">
+                  <CardHeader>
+                    <CardTitle className="text-xl flex items-center gap-2">
+                      <Icon name="User" size={24} />
+                      Мой профиль
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <div className="flex items-center gap-6">
+                      <div className="w-24 h-24 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
+                        {currentUser.avatar_url ? (
+                          <img src={currentUser.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                        ) : (
+                          <Icon name="User" size={48} className="text-primary" />
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-2xl font-bold">{currentUser.user_id}</h2>
+                          {currentUser.is_creator && (
+                            <Badge variant="default" className="bg-primary">
+                              <Icon name="Check" size={14} className="mr-1" />
+                              Создатель
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-muted-foreground">{currentUser.email}</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <label className="text-sm font-medium">Загрузить аватар (URL)</label>
+                      <div className="flex gap-3">
+                        <Input
+                          placeholder="https://example.com/avatar.jpg"
+                          value={avatarUrl}
+                          onChange={(e) => setAvatarUrl(e.target.value)}
+                        />
+                        <Button onClick={handleUpdateAvatar}>
+                          <Icon name="Upload" size={18} className="mr-2" />
+                          Сохранить
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="friends" className="space-y-6">
+                <Card className="border-primary/20 shadow-xl">
+                  <CardHeader>
+                    <CardTitle className="text-xl flex items-center gap-2">
+                      <Icon name="UserPlus" size={24} />
+                      Добавить друга
+                    </CardTitle>
+                    <CardDescription>
+                      Введите ID пользователя (например, #1001)
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex gap-3">
+                      <Input
+                        placeholder="#1001"
+                        value={friendUserId}
+                        onChange={(e) => setFriendUserId(e.target.value)}
+                      />
+                      <Button onClick={handleAddFriend}>
+                        <Icon name="UserPlus" size={18} className="mr-2" />
+                        Добавить
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <div className="space-y-4">
+                  <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                    <Icon name="Users" size={28} />
+                    Мои друзья ({friends.length})
+                  </h2>
+                  {friends.length === 0 ? (
+                    <Card className="border-primary/20">
+                      <CardContent className="p-8 text-center">
+                        <Icon name="Users" size={48} className="mx-auto mb-4 text-muted-foreground" />
+                        <p className="text-lg text-muted-foreground">
+                          У вас пока нет друзей
+                        </p>
+                        <p className="text-sm text-muted-foreground mt-2">
+                          Добавьте друга по его ID
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    friends.map((friend) => (
+                      <Card key={friend.id} className="border-primary/20 shadow-lg">
+                        <CardContent className="p-6">
+                          <div className="flex items-center gap-4">
+                            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
+                              {friend.avatar_url ? (
+                                <img src={friend.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                              ) : (
+                                <Icon name="User" size={32} className="text-primary" />
+                              )}
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-lg font-semibold">{friend.user_id}</h3>
+                                {friend.is_creator && (
+                                  <Badge variant="default" className="bg-primary text-xs">
+                                    <Icon name="Check" size={10} className="mr-1" />
+                                    Создатель
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-sm text-muted-foreground">{friend.email}</p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
           </div>
         )}
       </div>
