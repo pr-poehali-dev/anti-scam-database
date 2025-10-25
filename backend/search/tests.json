@@ -1,0 +1,27 @@
+{
+  "tests": [
+    {
+      "name": "Search for user",
+      "method": "GET",
+      "path": "/?username=test",
+      "expectedStatus": 200,
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Add scam report",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "telegram_username": "scammer123",
+        "is_scammer": true,
+        "description": "Tried to scam",
+        "reported_by": 1
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}
