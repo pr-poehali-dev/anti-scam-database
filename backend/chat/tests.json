@@ -1,0 +1,35 @@
+{
+  "tests": [
+    {
+      "name": "Create chat",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "create_chat",
+        "user_id": 1,
+        "friend_id": 2
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "chat_id": "number"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Send message",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "send_message",
+        "chat_id": 1,
+        "sender_id": 1,
+        "message_text": "Hello"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "message_id": "number"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

@@ -5,9 +5,9 @@ from typing import Dict, Any
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
-    Business: Search for Telegram users in scam database
-    Args: event with httpMethod, queryStringParameters
-    Returns: HTTP response with search results
+    Business: Search and report Telegram scammers with ratings
+    Args: event with httpMethod, queryStringParameters, body
+    Returns: HTTP response with search results and ratings
     '''
     method: str = event.get('httpMethod', 'GET')
     
@@ -16,7 +16,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'statusCode': 200,
             'headers': {
                 'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
                 'Access-Control-Allow-Headers': 'Content-Type',
                 'Access-Control-Max-Age': '86400'
             },
@@ -111,6 +111,46 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'statusCode': 200,
                 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
                 'body': json.dumps({'success': True}),
+                'isBase64Encoded': False
+            }
+        
+        elif method == 'PUT':
+            body_data = json.loads(event.get('body', '{}'))
+            report_id = body_data.get('report_id')
+            user_id = body_data.get('user_id')
+            rating_type = body_data.get('rating_type')
+            
+            cur.execute(
+                "SELECT id FROM user_ratings WHERE report_id = %s AND user_id = %s",
+                (report_id, user_id)
+            )
+            existing_rating = cur.fetchone()
+            
+            if existing_rating:
+                cur.execute(
+                    "UPDATE user_ratings SET rating_type = %s WHERE id = %s",
+                    (rating_type, existing_rating[0])
+                )
+            else:
+                cur.execute(
+                    "INSERT INTO user_ratings (report_id, user_id, rating_type) VALUES (%s, %s, %s)",
+                    (report_id, user_id, rating_type)
+                )
+            
+            cur.execute(
+                "UPDATE scam_reports SET likes = (SELECT COUNT(*) FROM user_ratings WHERE report_id = %s AND rating_type = 'like'), dislikes = (SELECT COUNT(*) FROM user_ratings WHERE report_id = %s AND rating_type = 'dislike') WHERE id = %s",
+                (report_id, report_id, report_id)
+            )
+            
+            conn.commit()
+            
+            cur.execute("SELECT likes, dislikes FROM scam_reports WHERE id = %s", (report_id,))
+            result = cur.fetchone()
+            
+            return {
+                'statusCode': 200,
+                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'likes': result[0], 'dislikes': result[1]}),
                 'isBase64Encoded': False
             }
     

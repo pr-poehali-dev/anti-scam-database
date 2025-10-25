@@ -5,7 +5,7 @@ from typing import Dict, Any
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
-    Business: User profile management and avatar upload
+    Business: User profile management with base64 avatar upload from phone
     Args: event with httpMethod, body, queryStringParameters
     Returns: HTTP response with profile data
     '''

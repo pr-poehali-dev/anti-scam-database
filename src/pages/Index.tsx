@@ -22,6 +22,26 @@ interface Friend {
   is_creator: boolean;
   avatar_url?: string;
   status: string;
+  friendship_id?: number;
+}
+
+interface Chat {
+  chat_id: number;
+  friend_id: number;
+  friend_user_id: string;
+  friend_email: string;
+  friend_avatar?: string;
+  last_message?: string;
+  last_message_time?: string;
+}
+
+interface Message {
+  id: number;
+  sender_id: number;
+  text: string;
+  created_at: string;
+  sender_email: string;
+  sender_avatar?: string;
 }
 
 interface SearchResult {
@@ -51,6 +71,10 @@ const Index = () => {
   const [reportDescription, setReportDescription] = useState('');
   const [reportEvidence, setReportEvidence] = useState('');
   const [showReportForm, setShowReportForm] = useState(false);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [activeChat, setActiveChat] = useState<number | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [newMessage, setNewMessage] = useState('');
   const { toast } = useToast();
 
   useEffect(() => {
@@ -162,10 +186,11 @@ const Index = () => {
         body: JSON.stringify({ user_id: currentUser.id, friend_user_id: friendUserId })
       });
 
+      const data = await response.json();
       if (response.ok) {
         toast({
           title: 'Успешно!',
-          description: 'Друг добавлен'
+          description: data.message || 'Заявка в друзья отправлена'
         });
         setFriendUserId('');
         loadFriends();
@@ -186,40 +211,40 @@ const Index = () => {
     }
   };
 
-  const handleUpdateAvatar = async () => {
-    if (!currentUser || !avatarUrl.trim()) {
-      toast({
-        variant: 'destructive',
-        title: 'Ошибка',
-        description: 'Введите URL аватара'
-      });
-      return;
-    }
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentUser) return;
 
-    try {
-      const response = await fetch('https://functions.poehali.dev/1de1e77d-129c-4a35-83e8-5e53edd71c52', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: currentUser.id, avatar_url: avatarUrl })
-      });
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64 = reader.result?.toString().split(',')[1];
+      if (!base64) return;
 
-      const data = await response.json();
-      if (response.ok) {
-        setCurrentUser(data);
-        localStorage.setItem('scamkadr_user', JSON.stringify(data));
-        toast({
-          title: 'Успешно!',
-          description: 'Аватар обновлен'
+      try {
+        const response = await fetch('https://functions.poehali.dev/1de1e77d-129c-4a35-83e8-5e53edd71c52', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: currentUser.id, avatar_url: `data:image/jpeg;base64,${base64}` })
         });
-        setAvatarUrl('');
+
+        const data = await response.json();
+        if (response.ok) {
+          setCurrentUser(data);
+          localStorage.setItem('scamkadr_user', JSON.stringify(data));
+          toast({
+            title: 'Успешно!',
+            description: 'Аватар обновлен'
+          });
+        }
+      } catch (error) {
+        toast({
+          variant: 'destructive',
+          title: 'Ошибка',
+          description: 'Не удалось обновить аватар'
+        });
       }
-    } catch (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Ошибка',
-        description: 'Не удалось обновить аватар'
-      });
-    }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleReport = async () => {
@@ -264,12 +289,32 @@ const Index = () => {
     }
   };
 
+  const handleFriendAction = async (friendshipId: number, action: 'accept' | 'reject') => {
+    try {
+      const response = await fetch('https://functions.poehali.dev/2f80e002-f06f-423f-a633-a2c26f5c4cf8', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ friendship_id: friendshipId, action })
+      });
+
+      if (response.ok) {
+        toast({
+          title: 'Успешно!',
+          description: action === 'accept' ? 'Заявка принята' : 'Заявка отклонена'
+        });
+        loadFriends();
+      }
+    } catch (error) {
+      console.error('Failed to handle friend request');
+    }
+  };
+
   const handleRating = async (reportId: number, ratingType: 'like' | 'dislike') => {
     if (!currentUser) return;
 
     try {
-      const response = await fetch('https://functions.poehali.dev/fc8d9d83-c23c-4026-aaf8-37029b89c912', {
-        method: 'POST',
+      const response = await fetch('https://functions.poehali.dev/0769ac85-d5d6-4db8-bb26-69a446ef51d9', {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           report_id: reportId,
@@ -293,11 +338,91 @@ const Index = () => {
     }
   };
 
+  const loadChats = async () => {
+    if (!currentUser) return;
+    try {
+      const response = await fetch(
+        `https://functions.poehali.dev/1643f5ec-0f6e-4d2a-8b6e-0e65754bc836?action=chats&user_id=${currentUser.id}`
+      );
+      const data = await response.json();
+      setChats(data.chats || []);
+    } catch (error) {
+      console.error('Failed to load chats');
+    }
+  };
+
+  const loadMessages = async (chatId: number) => {
+    try {
+      const response = await fetch(
+        `https://functions.poehali.dev/1643f5ec-0f6e-4d2a-8b6e-0e65754bc836?action=messages&chat_id=${chatId}`
+      );
+      const data = await response.json();
+      setMessages(data.messages || []);
+    } catch (error) {
+      console.error('Failed to load messages');
+    }
+  };
+
+  const handleStartChat = async (friendId: number) => {
+    if (!currentUser) return;
+    try {
+      const response = await fetch('https://functions.poehali.dev/1643f5ec-0f6e-4d2a-8b6e-0e65754bc836', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create_chat', user_id: currentUser.id, friend_id: friendId })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setActiveChat(data.chat_id);
+        setActiveTab('friends');
+        loadMessages(data.chat_id);
+        loadChats();
+      }
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Ошибка',
+        description: 'Не удалось создать чат'
+      });
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!currentUser || !activeChat || !newMessage.trim()) return;
+    try {
+      const response = await fetch('https://functions.poehali.dev/1643f5ec-0f6e-4d2a-8b6e-0e65754bc836', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send_message',
+          chat_id: activeChat,
+          sender_id: currentUser.id,
+          message_text: newMessage
+        })
+      });
+      if (response.ok) {
+        setNewMessage('');
+        loadMessages(activeChat);
+        loadChats();
+      }
+    } catch (error) {
+      console.error('Failed to send message');
+    }
+  };
+
   useEffect(() => {
     if (currentUser && activeTab === 'friends') {
       loadFriends();
+      loadChats();
     }
   }, [activeTab, currentUser]);
+
+  useEffect(() => {
+    if (activeChat) {
+      const interval = setInterval(() => loadMessages(activeChat), 3000);
+      return () => clearInterval(interval);
+    }
+  }, [activeChat]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-secondary via-secondary/95 to-secondary/90">
@@ -630,17 +755,14 @@ const Index = () => {
                     </div>
 
                     <div className="space-y-3">
-                      <label className="text-sm font-medium">Загрузить аватар (URL)</label>
+                      <label className="text-sm font-medium">Загрузить аватар с телефона</label>
                       <div className="flex gap-3">
                         <Input
-                          placeholder="https://example.com/avatar.jpg"
-                          value={avatarUrl}
-                          onChange={(e) => setAvatarUrl(e.target.value)}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleAvatarUpload}
+                          className="cursor-pointer"
                         />
-                        <Button onClick={handleUpdateAvatar}>
-                          <Icon name="Upload" size={18} className="mr-2" />
-                          Сохранить
-                        </Button>
                       </div>
                     </div>
                   </CardContent>
@@ -691,35 +813,133 @@ const Index = () => {
                       </CardContent>
                     </Card>
                   ) : (
-                    friends.map((friend) => (
-                      <Card key={friend.id} className="border-primary/20 shadow-lg">
-                        <CardContent className="p-6">
-                          <div className="flex items-center gap-4">
-                            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
-                              {friend.avatar_url ? (
-                                <img src={friend.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
-                              ) : (
-                                <Icon name="User" size={32} className="text-primary" />
-                              )}
-                            </div>
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2">
-                                <h3 className="text-lg font-semibold">{friend.user_id}</h3>
-                                {friend.is_creator && (
-                                  <Badge variant="default" className="bg-primary text-xs">
-                                    <Icon name="Check" size={10} className="mr-1" />
-                                    Создатель
-                                  </Badge>
-                                )}
+                    <>
+                      {friends.filter(f => f.status === 'pending').length > 0 && (
+                        <div className="space-y-2">
+                          <h3 className="text-lg font-semibold text-white">Заявки в друзья</h3>
+                          {friends.filter(f => f.status === 'pending').map((friend) => (
+                            <Card key={friend.id} className="border-yellow-500/50 shadow-lg">
+                              <CardContent className="p-4">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
+                                      {friend.avatar_url ? (
+                                        <img src={friend.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                                      ) : (
+                                        <Icon name="User" size={24} className="text-primary" />
+                                      )}
+                                    </div>
+                                    <div>
+                                      <p className="font-semibold">{friend.user_id}</p>
+                                      <p className="text-xs text-muted-foreground">{friend.email}</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Button size="sm" onClick={() => handleFriendAction(friend.friendship_id!, 'accept')}>
+                                      <Icon name="Check" size={16} />
+                                    </Button>
+                                    <Button size="sm" variant="destructive" onClick={() => handleFriendAction(friend.friendship_id!, 'reject')}>
+                                      <Icon name="X" size={16} />
+                                    </Button>
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      )}
+
+                      {friends.filter(f => f.status === 'accepted').map((friend) => (
+                        <Card key={friend.id} className="border-primary/20 shadow-lg">
+                          <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-4">
+                                <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
+                                  {friend.avatar_url ? (
+                                    <img src={friend.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                                  ) : (
+                                    <Icon name="User" size={32} className="text-primary" />
+                                  )}
+                                </div>
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <h3 className="text-lg font-semibold">{friend.user_id}</h3>
+                                    {friend.is_creator && (
+                                      <Badge variant="default" className="bg-primary text-xs">
+                                        <Icon name="Check" size={10} className="mr-1" />
+                                        Создатель
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-muted-foreground">{friend.email}</p>
+                                </div>
                               </div>
-                              <p className="text-sm text-muted-foreground">{friend.email}</p>
+                              <Button onClick={() => handleStartChat(friend.id)}>
+                                <Icon name="MessageCircle" size={18} className="mr-2" />
+                                Чат
+                              </Button>
                             </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </>
                   )}
                 </div>
+
+                {activeChat && (
+                  <Card className="border-primary/20 shadow-xl mt-6">
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-xl flex items-center gap-2">
+                          <Icon name="MessageCircle" size={24} />
+                          Чат
+                        </CardTitle>
+                        <Button variant="ghost" size="sm" onClick={() => setActiveChat(null)}>
+                          <Icon name="X" size={18} />
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="h-96 overflow-y-auto space-y-3 p-4 bg-secondary/20 rounded-lg">
+                        {messages.length === 0 ? (
+                          <p className="text-center text-muted-foreground">Нет сообщений</p>
+                        ) : (
+                          messages.map((msg) => (
+                            <div
+                              key={msg.id}
+                              className={`flex gap-3 ${msg.sender_id === currentUser?.id ? 'flex-row-reverse' : 'flex-row'}`}
+                            >
+                              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                {msg.sender_avatar ? (
+                                  <img src={msg.sender_avatar} alt="Avatar" className="w-full h-full object-cover" />
+                                ) : (
+                                  <Icon name="User" size={16} className="text-primary" />
+                                )}
+                              </div>
+                              <div className={`max-w-xs ${msg.sender_id === currentUser?.id ? 'bg-primary text-white' : 'bg-card'} p-3 rounded-lg`}>
+                                <p className="text-sm">{msg.text}</p>
+                                <p className="text-xs opacity-70 mt-1">
+                                  {new Date(msg.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                                </p>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Введите сообщение..."
+                          value={newMessage}
+                          onChange={(e) => setNewMessage(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                        />
+                        <Button onClick={handleSendMessage}>
+                          <Icon name="Send" size={18} />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
               </TabsContent>
             </Tabs>
           </div>

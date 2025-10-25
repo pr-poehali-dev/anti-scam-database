@@ -5,7 +5,7 @@ from typing import Dict, Any
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
-    Business: Friend management system - add, accept, list friends
+    Business: Friend management system - send requests, accept, reject, list friends
     Args: event with httpMethod, body, queryStringParameters
     Returns: HTTP response with friendship data
     '''
@@ -33,7 +33,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             user_id = params.get('user_id')
             
             cur.execute("""
-                SELECT u.id, u.user_id, u.email, u.is_creator, u.avatar_url, f.status
+                SELECT u.id, u.user_id, u.email, u.is_creator, u.avatar_url, f.status, f.id
                 FROM friendships f
                 JOIN users u ON (f.friend_id = u.id OR f.user_id = u.id)
                 WHERE (f.user_id = %s OR f.friend_id = %s) AND u.id != %s
@@ -47,7 +47,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'email': f[2],
                 'is_creator': f[3],
                 'avatar_url': f[4],
-                'status': f[5]
+                'status': f[5],
+                'friendship_id': f[6]
             } for f in friends]
             
             return {
@@ -76,9 +77,34 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             friend_id = friend[0]
             
             cur.execute(
-                "INSERT INTO friendships (user_id, friend_id, status) VALUES (%s, %s, 'accepted') ON CONFLICT DO NOTHING",
+                "INSERT INTO friendships (user_id, friend_id, status) VALUES (%s, %s, 'pending') ON CONFLICT DO NOTHING",
                 (user_id, friend_id)
             )
+            conn.commit()
+            
+            return {
+                'statusCode': 200,
+                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'success': True, 'message': 'Friend request sent'}),
+                'isBase64Encoded': False
+            }
+        
+        elif method == 'PUT':
+            body_data = json.loads(event.get('body', '{}'))
+            friendship_id = body_data.get('friendship_id')
+            action = body_data.get('action')
+            
+            if action == 'accept':
+                cur.execute(
+                    "UPDATE friendships SET status = 'accepted' WHERE id = %s",
+                    (friendship_id,)
+                )
+            elif action == 'reject':
+                cur.execute(
+                    "UPDATE friendships SET status = 'rejected' WHERE id = %s",
+                    (friendship_id,)
+                )
+            
             conn.commit()
             
             return {
