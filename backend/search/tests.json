@@ -15,6 +15,7 @@
         "telegram_username": "scammer123",
         "is_scammer": true,
         "description": "Tried to scam",
+        "evidence_url": "https://example.com/proof.jpg",
         "reported_by": 1
       },
       "expectedStatus": 200,

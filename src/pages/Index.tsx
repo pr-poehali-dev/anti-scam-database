@@ -30,6 +30,9 @@ interface SearchResult {
   is_scammer: boolean;
   report_count: number;
   description: string;
+  evidence_url?: string;
+  likes: number;
+  dislikes: number;
 }
 
 const Index = () => {
@@ -44,6 +47,10 @@ const Index = () => {
   const [friends, setFriends] = useState<Friend[]>([]);
   const [friendUserId, setFriendUserId] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
+  const [reportUsername, setReportUsername] = useState('');
+  const [reportDescription, setReportDescription] = useState('');
+  const [reportEvidence, setReportEvidence] = useState('');
+  const [showReportForm, setShowReportForm] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -215,6 +222,77 @@ const Index = () => {
     }
   };
 
+  const handleReport = async () => {
+    if (!currentUser || !reportUsername.trim() || !reportDescription.trim() || !reportEvidence.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'Ошибка',
+        description: 'Заполните все поля и прикрепите доказательства'
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch('https://functions.poehali.dev/0769ac85-d5d6-4db8-bb26-69a446ef51d9', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telegram_username: reportUsername,
+          is_scammer: true,
+          description: reportDescription,
+          evidence_url: reportEvidence,
+          reported_by: currentUser.id
+        })
+      });
+
+      if (response.ok) {
+        toast({
+          title: 'Успешно!',
+          description: 'Отчет о мошеннике отправлен'
+        });
+        setReportUsername('');
+        setReportDescription('');
+        setReportEvidence('');
+        setShowReportForm(false);
+      }
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Ошибка',
+        description: 'Не удалось отправить отчет'
+      });
+    }
+  };
+
+  const handleRating = async (reportId: number, ratingType: 'like' | 'dislike') => {
+    if (!currentUser) return;
+
+    try {
+      const response = await fetch('https://functions.poehali.dev/fc8d9d83-c23c-4026-aaf8-37029b89c912', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          report_id: reportId,
+          user_id: currentUser.id,
+          rating_type: ratingType
+        })
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        setSearchResults(prev => prev.map(r => 
+          r.id === reportId ? { ...r, likes: data.likes, dislikes: data.dislikes } : r
+        ));
+        toast({
+          title: 'Оценка учтена',
+          description: ratingType === 'like' ? 'Вы поставили лайк' : 'Вы поставили дизлайк'
+        });
+      }
+    } catch (error) {
+      console.error('Failed to rate');
+    }
+  };
+
   useEffect(() => {
     if (currentUser && activeTab === 'friends') {
       loadFriends();
@@ -375,6 +453,61 @@ const Index = () => {
                   </CardContent>
                 </Card>
 
+                <div className="flex justify-end">
+                  <Button 
+                    variant="destructive" 
+                    onClick={() => setShowReportForm(!showReportForm)}
+                    className="flex items-center gap-2"
+                  >
+                    <Icon name="AlertTriangle" size={18} />
+                    Сообщить о мошеннике
+                  </Button>
+                </div>
+
+                {showReportForm && (
+                  <Card className="border-destructive/20 shadow-xl">
+                    <CardHeader>
+                      <CardTitle className="text-xl flex items-center gap-2">
+                        <Icon name="AlertTriangle" size={24} />
+                        Отчет о мошеннике
+                      </CardTitle>
+                      <CardDescription>
+                        Заполните все поля и обязательно прикрепите доказательства
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Telegram Username</label>
+                        <Input
+                          placeholder="@username"
+                          value={reportUsername}
+                          onChange={(e) => setReportUsername(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Описание обмана</label>
+                        <Input
+                          placeholder="Что произошло?"
+                          value={reportDescription}
+                          onChange={(e) => setReportDescription(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Доказательства (URL скриншота)</label>
+                        <Input
+                          placeholder="https://example.com/proof.jpg"
+                          value={reportEvidence}
+                          onChange={(e) => setReportEvidence(e.target.value)}
+                        />
+                      </div>
+                      <Button onClick={handleReport} className="w-full">
+                        <Icon name="Send" size={18} className="mr-2" />
+                        Отправить отчет
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+
             {searchResults.length > 0 && (
               <div className="space-y-4">
                 <h2 className="text-2xl font-bold text-white flex items-center gap-2">
@@ -384,29 +517,64 @@ const Index = () => {
                 {searchResults.map((result) => (
                   <Card key={result.id} className="border-primary/20 shadow-lg">
                     <CardContent className="p-6">
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-2 flex-1">
-                          <div className="flex items-center gap-3">
-                            <h3 className="text-xl font-semibold">@{result.telegram_username}</h3>
-                            {result.is_scammer ? (
-                              <Badge variant="destructive" className="flex items-center gap-1">
-                                <Icon name="AlertTriangle" size={14} />
-                                Мошенник
-                              </Badge>
-                            ) : (
-                              <Badge variant="default" className="bg-green-500 flex items-center gap-1">
-                                <Icon name="CheckCircle" size={14} />
-                                Безопасен
-                              </Badge>
+                      <div className="space-y-4">
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-2 flex-1">
+                            <div className="flex items-center gap-3">
+                              <h3 className="text-xl font-semibold">@{result.telegram_username}</h3>
+                              {result.is_scammer ? (
+                                <Badge variant="destructive" className="flex items-center gap-1">
+                                  <Icon name="AlertTriangle" size={14} />
+                                  Мошенник
+                                </Badge>
+                              ) : (
+                                <Badge variant="default" className="bg-green-500 flex items-center gap-1">
+                                  <Icon name="CheckCircle" size={14} />
+                                  Безопасен
+                                </Badge>
+                              )}
+                            </div>
+                            {result.description && (
+                              <p className="text-muted-foreground">{result.description}</p>
+                            )}
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Icon name="Flag" size={16} />
+                              <span>Количество отчетов: {result.report_count}</span>
+                            </div>
+                            {result.evidence_url && (
+                              <div className="flex items-center gap-2 text-sm">
+                                <Icon name="Link" size={16} className="text-primary" />
+                                <a 
+                                  href={result.evidence_url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-primary hover:underline"
+                                >
+                                  Посмотреть доказательства
+                                </a>
+                              </div>
                             )}
                           </div>
-                          {result.description && (
-                            <p className="text-muted-foreground">{result.description}</p>
-                          )}
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Icon name="Flag" size={16} />
-                            <span>Количество отчетов: {result.report_count}</span>
-                          </div>
+                        </div>
+                        <div className="flex items-center gap-4 pt-4 border-t">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRating(result.id, 'like')}
+                            className="flex items-center gap-2"
+                          >
+                            <Icon name="ThumbsUp" size={16} />
+                            {result.likes}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRating(result.id, 'dislike')}
+                            className="flex items-center gap-2"
+                          >
+                            <Icon name="ThumbsDown" size={16} />
+                            {result.dislikes}
+                          </Button>
                         </div>
                       </div>
                     </CardContent>

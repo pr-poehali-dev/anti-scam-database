@@ -41,7 +41,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 }
             
             cur.execute(
-                "SELECT id, telegram_username, is_scammer, report_count, description FROM scam_reports WHERE telegram_username ILIKE %s",
+                "SELECT id, telegram_username, is_scammer, report_count, description, evidence_url, likes, dislikes FROM scam_reports WHERE telegram_username ILIKE %s",
                 (f'%{username}%',)
             )
             results = cur.fetchall()
@@ -51,7 +51,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'telegram_username': r[1],
                 'is_scammer': r[2],
                 'report_count': r[3],
-                'description': r[4]
+                'description': r[4],
+                'evidence_url': r[5],
+                'likes': r[6],
+                'dislikes': r[7]
             } for r in results]
             
             return {
@@ -66,7 +69,16 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             telegram_username = body_data.get('telegram_username')
             is_scammer = body_data.get('is_scammer', False)
             description = body_data.get('description', '')
+            evidence_url = body_data.get('evidence_url', '')
             reported_by = body_data.get('reported_by')
+            
+            if not evidence_url:
+                return {
+                    'statusCode': 400,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'error': 'Evidence required'}),
+                    'isBase64Encoded': False
+                }
             
             cur.execute(
                 "SELECT id, report_count FROM scam_reports WHERE telegram_username = %s",
@@ -77,14 +89,21 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if existing:
                 new_count = existing[1] + 1
                 cur.execute(
-                    "UPDATE scam_reports SET report_count = %s, is_scammer = %s, description = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
-                    (new_count, is_scammer, description, existing[0])
+                    "UPDATE scam_reports SET report_count = %s, is_scammer = %s, description = %s, evidence_url = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+                    (new_count, is_scammer, description, evidence_url, existing[0])
                 )
+                report_id = existing[0]
             else:
                 cur.execute(
-                    "INSERT INTO scam_reports (telegram_username, is_scammer, report_count, description, reported_by) VALUES (%s, %s, %s, %s, %s)",
-                    (telegram_username, is_scammer, 1, description, reported_by)
+                    "INSERT INTO scam_reports (telegram_username, is_scammer, report_count, description, evidence_url, reported_by) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+                    (telegram_username, is_scammer, 1, description, evidence_url, reported_by)
                 )
+                report_id = cur.fetchone()[0]
+            
+            cur.execute(
+                "INSERT INTO report_evidence (report_id, evidence_url, uploaded_by) VALUES (%s, %s, %s)",
+                (report_id, evidence_url, reported_by)
+            )
             
             conn.commit()
             
