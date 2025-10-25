@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import Icon from '@/components/ui/icon';
 import { useToast } from '@/hooks/use-toast';
 
@@ -865,10 +866,17 @@ const Index = () => {
                                   <div className="flex items-center gap-2">
                                     <h3 className="text-lg font-semibold">{friend.user_id}</h3>
                                     {friend.is_creator && (
-                                      <Badge variant="default" className="bg-primary text-xs">
-                                        <Icon name="Check" size={10} className="mr-1" />
-                                        Создатель
-                                      </Badge>
+                                      <Tooltip>
+                                        <TooltipTrigger>
+                                          <Badge variant="default" className="bg-primary text-xs cursor-pointer">
+                                            <Icon name="Check" size={10} className="mr-1" />
+                                            Создатель
+                                          </Badge>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p>Создатель/гарант</p>
+                                        </TooltipContent>
+                                      </Tooltip>
                                     )}
                                   </div>
                                   <p className="text-sm text-muted-foreground">{friend.email}</p>
